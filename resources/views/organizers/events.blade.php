@@ -324,6 +324,7 @@
                 if (this.editModalOpen) this.editData.photo = file;
             },
 
+            // --- CREATE & UPDATE (NOTIFIKASI POJOK KANAN DENGAN ALASAN) ---
             async submitForm(type) {
                 const isEdit = type === 'edit';
                 const data = isEdit ? this.editData : this.formData;
@@ -339,22 +340,62 @@
                 payload.append('contact_phone', data.contact_phone);
                 payload.append('contact_email', data.contact_email);
                 payload.append('description', data.description);
-                if (data.photo) payload.append('photo', data.photo);
-                if (isEdit) payload.append('_method', 'POST'); // Trik Laravel PUT
+                
+                if (data.photo instanceof File) {
+                    payload.append('photo', data.photo);
+                }
+                
+                if (isEdit) payload.append('_method', 'POST'); 
 
                 try {
                     const res = await fetch(url, {
                         method: 'POST',
-                        headers: { 'Authorization': `Bearer ${this.token}`, 'Accept': 'application/json' },
+                        headers: { 
+                            'Authorization': `Bearer ${this.token}`,
+                            'Accept': 'application/json' 
+                        },
                         body: payload
                     });
+                    
                     const json = await res.json();
-                    if (!res.ok) throw new Error(json.message || 'Gagal menyimpan');
 
-                    this.showNotify(isEdit ? 'Diperbarui!' : 'Dibuat!');
+                    // --- CEK ERROR ---
+                    if (!res.ok) {
+                        let errorMessage = 'Gagal menyimpan data.'; // Pesan default
+
+                        if (res.status === 422) {
+                            // Error Validasi (Misal: Foto Kebesaran / Email Salah)
+                            // Format JSON: { "photo": ["The photo field must not be greater than..."] }
+                            const errorKeys = Object.keys(json);
+                            if (errorKeys.length > 0) {
+                                const firstField = errorKeys[0];
+                                const firstMsg = json[firstField][0];
+                                
+                                // Terjemahkan pesan umum jika perlu (Opsional)
+                                if(firstMsg.includes('not be greater than 2048')) {
+                                    errorMessage = "Gagal: Ukuran foto maksimal 2MB.";
+                                } else {
+                                    errorMessage = `Gagal: ${firstMsg}`;
+                                }
+                            } else if (json.message) {
+                                errorMessage = json.message;
+                            }
+                        } else if (json.message) {
+                            errorMessage = json.message;
+                        }
+
+                        throw new Error(errorMessage);
+                    }
+
+                    // --- JIKA SUKSES ---
+                    this.showNotify(isEdit ? 'Berhasil diperbarui!' : 'Berhasil dibuat!');
+                    
                     isEdit ? this.closeEditModal() : this.closeAddModal();
                     this.fetchEvents();
+
                 } catch (e) {
+                    // --- TAMPILKAN ALASAN DI NOTIFIKASI POJOK KANAN ---
+                    // Parameter 'true' artinya warna merah (Error)
                     this.showNotify(e.message, true);
                 }
             },
